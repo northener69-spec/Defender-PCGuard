@@ -1,0 +1,3 @@
+# Optional extras (tray icon / minimise-to-tray). The app runs without them.
+pystray
+Pillow

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Defender PC Guard - a merged Windows Defender updater and companion watchdog for Windows 10 &amp; 11 with light &amp; dark themes.">
+<meta name="theme-color" content="#0a7adc">
+<title>Defender PC Guard – Readme</title>
+<style>
+  :root{--blue:#0056b3;--green:#0a7adc;--amber:#b45309;--grey:#5b6472}
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{font-family:system-ui,-apple-system,"Segoe UI",Arial,Helvetica,sans-serif;
+       margin:0;padding:1.25rem;background:#f9f9f9;color:#333;line-height:1.55}
+  .wrap{max-width:960px;margin:0 auto}
+  header.banner{display:flex;align-items:center;gap:1rem;flex-wrap:wrap;
+       background:linear-gradient(135deg,#075ea8,#0a7adc);color:#fff;
+       padding:1.1rem 1.3rem;border-radius:10px;margin-bottom:1.5rem}
+  header.banner h1{margin:0;font-size:1.7rem;color:#fff}
+  header.banner p{margin:.2rem 0 0;opacity:.92;font-size:.95rem}
+  .badge{display:inline-block;background:rgba(255,255,255,.22);border-radius:12px;
+       padding:.1rem .6rem;font-size:.8rem;vertical-align:middle}
+  h2{color:var(--blue);border-bottom:1px solid #dde3de;padding-bottom:.2rem}
+  code{font-family:Consolas,monospace;background:#eef1f0;padding:.08rem .35rem;
+       border-radius:3px;word-break:break-word}
+  pre{background:#eef1f0;padding:.6rem;border-radius:4px;overflow:auto}
+  .section{margin-bottom:2rem}
+  .note{background:#fff8e1;border-left:4px solid #ffc107;padding:.6rem .8rem;margin:.6rem 0;
+        border-radius:0 4px 4px 0}
+  .tip{background:#e7f5ea;border-left:4px solid var(--green);padding:.6rem .8rem;
+       margin:.6rem 0;border-radius:0 4px 4px 0}
+  table{border-collapse:collapse;width:100%;margin:.5rem 0;font-size:.95rem}
+  th,td{border:1px solid #ccc;padding:.45rem .6rem;text-align:left;vertical-align:top}
+  th{background:#eef3f8}
+  .pill{display:inline-block;background:var(--green);color:#fff;border-radius:10px;
+        padding:.05rem .55rem;font-size:.85rem;white-space:nowrap}
+  .amber{color:var(--amber);font-weight:bold}
+  .grey{color:var(--grey);font-weight:bold}
+  footer{margin-top:3rem;border-top:1px solid #ccc;padding-top:1rem;color:#666;font-size:.9rem}
+  @media (max-width:560px){
+    body{padding:.8rem}
+    header.banner{padding:.9rem}
+    header.banner h1{font-size:1.35rem}
+    table{font-size:.88rem}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="banner">
+  <svg width="52" height="52" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5l8-3z"
+          fill="#ffffff" opacity="0.15"/>
+    <path d="M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5l8-3z"
+          stroke="#ffffff" stroke-width="1.4" fill="none"/>
+    <path d="M8.5 12.2l2.4 2.4 4.4-4.8" stroke="#ffffff" stroke-width="1.8"
+          fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  <div>
+    <h1>Defender PC Guard <span class="badge">v2.0.0</span></h1>
+    <p>Windows Defender updater + companion watchdog — with light &amp; dark themes.</p>
+  </div>
+</header>
+
+<p><strong>Defender PC Guard</strong> merges the <em>Windows Defender Updater</em> and
+<em>PC Guard</em> into one app. Use one place to <strong>update and check Defender</strong>, and to
+<strong>watch</strong> persistence, tamper and outbound activity. It never modifies your system
+beyond what you ask it to.</p>
+
+<div class="tip">
+  <strong>Theme toggle.</strong> Click <strong>Theme: Dark / Theme: Light</strong> in the footer
+  (next to About) to switch the entire UI between light and dark at any time.
+</div>
+
+<div class="section">
+<h2>Defender Update (new tab, left of the Dashboard)</h2>
+<ul>
+  <li><strong>Update Defender</strong> — updates your virus definitions
+      (Automatic / Online / Offline) and, optionally, the scanning engine.</li>
+  <li><strong>Check Current Version</strong> — shows what's installed and compares it against the
+      latest <strong>Microsoft has published online</strong>, so “up to date” has a clear meaning.</li>
+  <li>A colour-coded live log plus a plain-English summary pop-up.</li>
+  <li>The same <strong>Update Defender</strong> and <strong>Check Version</strong> actions are also
+      in the footer, right where the version number is shown, so you can reach them from any tab.</li>
+</ul>
+</div>
+
+<div class="section">
+<h2>The watchdog: the three things it watches</h2>
+<ul>
+  <li><strong>Persistence — what auto-starts.</strong> Snapshots Run/RunOnce keys, Startup folders,
+      Services and Scheduled Tasks. After a baseline, any <strong>new / changed / removed</strong>
+      entry is flagged.</li>
+  <li><strong>Tamper — changes to your defences.</strong> Monitors the <strong>hosts file</strong>
+      (hash), your <strong>DNS servers</strong>, and <strong>Defender's own settings</strong> —
+      alerting if an <strong>exclusion is added</strong> or <strong>real-time protection</strong>
+      is turned off.</li>
+  <li><strong>Outbound — who's phoning home.</strong> Lists connections per process and flags any
+      <strong>new process → remote-address</strong> pair, plus <em>not-answering</em> and
+      <em>burst</em> behaviour.</li>
+</ul>
+<p>It is a <strong>watchdog that alerts you</strong>, not a blocker.</p>
+</div>
+
+<div class="section">
+<h2>The tabs</h2>
+<table>
+  <tr><th>Tab</th><th>What it shows</th></tr>
+  <tr><td><strong>Defender Update</strong></td><td>Update and check Microsoft Defender (definitions
+      + optional engine), with its own live log.</td></tr>
+  <tr><td><strong>Dashboard</strong></td><td>Live Defender status — real-time protection, signatures,
+      cloud, and how many exclusions exist.</td></tr>
+  <tr><td><strong>Network (outbound)</strong></td><td>Live connections <em>plus</em> any seen in the
+      last 5 minutes. <em>Open</em>, <em>Connecting</em>, <em>Blocked?</em> or <em>Closed</em>.</td></tr>
+  <tr><td><strong>Startup / persistence</strong></td><td>Everything that auto-starts (Run keys,
+      Startup folder, Scheduled Tasks). Fills in automatically; <em>Scan now</em> refreshes it.</td></tr>
+  <tr><td><strong>Alerts</strong></td><td>Every alert, newest at the bottom. Right-click to ignore.</td></tr>
+  <tr><td><strong>Log</strong></td><td>Timestamped history for this run, with the previous run's
+      lines loaded at startup. Also written to <code>%LOCALAPPDATA%\PCGuard\pcguard-YYYY-MM-DD.log</code>.</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h2>Connection states explained</h2>
+<table>
+  <tr><th>Shown as</th><th>Means</th></tr>
+  <tr><td><span class="pill">Open</span> (ESTABLISHED)</td><td>The connection is open and working —
+      normal, healthy traffic.</td></tr>
+  <tr><td><span class="pill">Connecting</span> (SYN_SENT)</td><td>Handshake in progress; usually
+      flips to <em>Open</em> in a moment.</td></tr>
+  <tr><td><span class="pill" style="background:#b45309">Blocked?</span></td><td>A connection stuck at
+      <em>SYN_SENT</em> for <strong>10s+</strong> — destination not replying (down, or firewalled).</td></tr>
+  <tr><td><span class="pill" style="background:#5b6472">Closed</span></td><td>Seen recently but has
+      since ended — normal for brief pings, update checks and API calls.</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h2>Tray, sound &amp; behaviour</h2>
+<ul>
+  <li><strong>Minimise or close</strong> the window and it keeps running in the
+      <strong>notification area</strong>. Right-click the tray icon for options.</li>
+  <li><strong>Two distinct alert tones</strong> for outbound vs tamper/persistence, toggleable with
+      <strong>Sound: ON/OFF</strong>.</li>
+  <li><strong>Start with Windows</strong>, <strong>outbound burst detection</strong>,
+      <strong>not-answering detection</strong>, <strong>ignore an alert</strong>,
+      <strong>export log (TXT/CSV)</strong>, and a <strong>baseline age reminder</strong>.</li>
+</ul>
+</div>
+
+<div class="section">
+<h2>Run it</h2>
+<ul>
+  <li><strong>From source:</strong> <code>python DefenderPCGuard.pyw</code>
+      (or <code>Run Defender PC Guard.bat</code>).</li>
+  <li><strong>Build an exe:</strong> <code>pip install pyinstaller</code> then
+      <code>pyinstaller DefenderPCGuard.spec</code> → <code>dist\DefenderPCGuard.exe</code>.</li>
+</ul>
+<div class="section">
+<h2>Requirements (to run from source)</h2>
+<ul>
+  <li><strong>Python 3.9 or newer</strong> — get it from <a href="https://www.python.org/downloads/">python.org</a>.
+      In the Windows installer, tick <strong>"Add python.exe to PATH"</strong> so <code>python</code> works in a terminal.</li>
+  <li><strong>tkinter</strong> — bundled with the standard Windows Python installer (the "tcl/tk" part), so no extra step.</li>
+  <li><strong>pystray</strong> and <strong>Pillow</strong> — optional, only for the tray / minimise-to-tray icon.
+      The app runs fine without them; it just won't minimise to the notification area.</li>
+</ul>
+<p>Install the optional extras:</p>
+<pre><code>pip install -r requirements.txt</code></pre>
+<p>or directly: <code>pip install pystray Pillow</code></p>
+</div>
+</div>
+
+<div class="section">
+<h2>Important</h2>
+<ul>
+  <li>Keep <strong>Microsoft Defender switched on</strong> — this app complements it, not replaces it.</li>
+  <li>The <strong>engine</strong> update needs Administrator rights.</li>
+  <li>The watchdog is <strong>detection/alerting</strong>, not a blocker.</li>
+  <li>Data lives in <code>%LOCALAPPDATA%\PCGuard</code>; on-screen alerts reset each run, log files persist.</li>
+</ul>
+</div>
+
+<footer>
+  Defender PC Guard &mdash; version 2.0.0 &nbsp;|&nbsp; Created by northener69/aJonYmous3383 &nbsp;|&nbsp;
+  Coded by DeepSeek V4.1 Flash &nbsp;|&nbsp; Copyright 2026
+</footer>
+
+</div>
+</body>
+</html>
