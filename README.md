@@ -110,3 +110,8 @@ or, if you'd rather type it directly:
 ## Contact
 
 Questions or feedback? Get in touch at **northener69@duck.com** (a relay address — it reaches me without exposing my main inbox).
+
+## More from me
+
+Want to see how this gets built? Watch the process on my YouTube channel — **BiJONiCs**:
+<https://www.youtube.com/@aJonYmouse3383>
