@@ -10,6 +10,18 @@ A merged application that combines **Windows Defender Updater** and
 
 ---
 
+## Screenshots
+
+![Defender Update](screenshots/defender-update.png)
+
+![Network](screenshots/network.png)
+
+![Startup](screenshots/startup.png)
+
+![About](screenshots/about.png)
+
+---
+
 ## What's inside
 
 ### Defender Update (new tab, left of the Dashboard)
