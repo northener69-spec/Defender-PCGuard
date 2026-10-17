@@ -33,10 +33,7 @@ From the original *Windows Defender Updater* app:
   it against the **latest Microsoft has published online**, so "up to date"
   has a clear meaning.
 - A colour-coded live **log window** plus a plain-English summary pop-up.
-
-Quick **Update Defender** and **Check Version** buttons also live in the
-footer, right where the version number is shown, so you can reach them from
-any tab.
+That's the one place you need — no clutter elsewhere.
 
 ### PC Guard (watchdog)
 PC Guard is **not** an antivirus — Defender is already good at that. It watches
@@ -70,8 +67,7 @@ re-themes instantly.
 1. Run it and let it sit a moment while it reads your system.
 2. Click **Take baseline snapshot** when you're confident the PC is clean.
 3. Click **Scan now** any time. Real changes appear in **Alerts** + the counter.
-4. Use the **Defender Update** tab (or the footer buttons) to update/check
-   Defender whenever you like.
+4. Use the **Defender Update** tab to update/check Defender whenever you like.
 5. If a flagged outbound connection is something you use, select it in the
    **Network** tab and click **Trust selected**.
 
