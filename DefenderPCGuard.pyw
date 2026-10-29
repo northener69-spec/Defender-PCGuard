@@ -58,13 +58,13 @@ except Exception:  # tray is optional; app still works without it
     HAS_TRAY = False
 
 # Current version - bump whenever the app is updated.
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.0.1"
 
 APP_NAME = "Defender PC Guard"
 APP_TAGLINE = "Windows Defender updater + companion watchdog."
-APP_AUTHOR = "northener69/aJonYmous3383"
+APP_AUTHOR = "aJonyMous69"
 APP_CODED_BY = "DeepSeek V4.1 Flash"
-APP_REBUILD_BY = ""
+APP_REBUILD_BY = "Kimi (audit fixes)"
 APP_COPYRIGHT_YEAR = "2026"
 
 NO_WINDOW = 0x08000000  # subprocess CREATE_NO_WINDOW
@@ -75,7 +75,6 @@ os.makedirs(DATA_DIR, exist_ok=True)
 BASELINE_FILE = os.path.join(DATA_DIR, "baseline.json")
 TRUSTED_FILE = os.path.join(DATA_DIR, "trusted_net.json")
 IGNORED_FILE = os.path.join(DATA_DIR, "ignored_alerts.json")
-LOG_FILE = os.path.join(DATA_DIR, "pcguard.log")
 
 RUN_VALUE_NAME = "PCGuard"          # HKCU Run key value name
 BASELINE_AGE_DAYS = 30               # nudge to re-baseline after this many days
@@ -225,7 +224,10 @@ def get_latest_online():
 
 
 def compare_versions(a, b):
-    """Return -1 if a < b, 0 if equal, 1 if a > b (numeric dotted compare)."""
+    """Return -1 if a < b, 0 if equal, 1 if a > b (numeric dotted compare).
+    Tolerates None / non-string input (missing Defender fields) as '0'."""
+    a = str(a or "0")
+    b = str(b or "0")
     pa = [int(x) for x in re.split(r"[.\-]", a) if x.strip().isdigit()]
     pb = [int(x) for x in re.split(r"[.\-]", b) if x.strip().isdigit()]
     n = max(len(pa), len(pb))
@@ -298,16 +300,19 @@ def collect_run_entries():
             key = winreg.OpenKey(hive, path)
         except Exception:
             continue
-        i = 0
-        while True:
-            try:
-                name, val, _ = winreg.EnumValue(key, i)
-                i += 1
-            except OSError:
-                break
-            except Exception:
-                break
-            out[f"{hive_name}\\{name}"] = str(val)
+        try:  # always close the key - this runs every monitor cycle
+            i = 0
+            while True:
+                try:
+                    name, val, _ = winreg.EnumValue(key, i)
+                    i += 1
+                except OSError:
+                    break
+                except Exception:
+                    break
+                out[f"{hive_name}\\{name}"] = str(val)
+        finally:
+            winreg.CloseKey(key)
     return out
 
 
@@ -339,24 +344,28 @@ def collect_services():
             winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Services")
     except Exception:
         return out
-    i = 0
-    while True:
-        try:
-            name = winreg.EnumKey(root, i)
-            i += 1
-        except OSError:
-            break
-        except Exception:
-            break
-        try:
-            sk = winreg.OpenKey(root, name)
+    try:  # close every key - this runs every monitor cycle (hundreds of
+          # handles per pass, so leaking them adds up fast)
+        i = 0
+        while True:
             try:
-                img, _ = winreg.QueryValueEx(sk, "ImagePath")
+                name = winreg.EnumKey(root, i)
+                i += 1
+            except OSError:
+                break
             except Exception:
-                img = ""
-            out[name] = str(img)
-        except Exception:
-            pass
+                break
+            try:
+                with winreg.OpenKey(root, name) as sk:
+                    try:
+                        img, _ = winreg.QueryValueEx(sk, "ImagePath")
+                    except Exception:
+                        img = ""
+                    out[name] = str(img)
+            except Exception:
+                pass
+    finally:
+        winreg.CloseKey(root)
     return out
 
 
@@ -444,9 +453,12 @@ def collect_connections():
             local, foreign, state, pid = parts[1], parts[2], "", parts[3]
         if state not in ("ESTABLISHED", "SYN_SENT"):
             continue
-        ip = foreign.rsplit(":", 1)[0]
-        if (ip.startswith("127.") or ip.startswith("[")
-                or ip in ("0.0.0.0", "::", "*", "")):
+        # Strip IPv6 brackets so external IPv6 remotes are watched too
+        # (previously every bracketed address was skipped, hiding all IPv6
+        # outbound activity from the Network tab and the alerts).
+        ip = foreign.rsplit(":", 1)[0].strip("[]")
+        if (not ip or ip == "*" or ip.startswith("127.")
+                or ip in ("0.0.0.0", "::", "::1")):
             continue
         rows.append({
             "pid": pid,
@@ -495,7 +507,14 @@ def collect_pid_names():
 def _startup_command():
     if getattr(sys, "frozen", False):
         return f'"{sys.executable}" --minimized'
-    return f'"{sys.executable}" "{os.path.abspath(__file__)}" --minimized'
+    exe = sys.executable
+    # Running from source: use pythonw.exe when it sits next to python.exe,
+    # otherwise a console window flashes at every login.
+    if os.path.basename(exe).lower() == "python.exe":
+        cand = os.path.join(os.path.dirname(exe), "pythonw.exe")
+        if os.path.isfile(cand):
+            exe = cand
+    return f'"{exe}" "{os.path.abspath(__file__)}" --minimized'
 
 
 def refresh_startup_minimized():
@@ -503,15 +522,15 @@ def refresh_startup_minimized():
         return
     path = r"Software\Microsoft\Windows\CurrentVersion\Run"
     try:
-        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, path, 0,
-                             winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE)
-        try:
-            cur, _ = winreg.QueryValueEx(key, RUN_VALUE_NAME)
-        except FileNotFoundError:
-            return
-        if "--minimized" not in cur and "--minimised" not in cur:
-            winreg.SetValueEx(key, RUN_VALUE_NAME, 0, winreg.REG_SZ,
-                              cur.rstrip() + " --minimized")
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path, 0,
+                            winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE) as key:
+            try:
+                cur, _ = winreg.QueryValueEx(key, RUN_VALUE_NAME)
+            except FileNotFoundError:
+                return
+            if "--minimized" not in cur and "--minimised" not in cur:
+                winreg.SetValueEx(key, RUN_VALUE_NAME, 0, winreg.REG_SZ,
+                                  cur.rstrip() + " --minimized")
     except Exception:
         pass
 
@@ -520,14 +539,14 @@ def startup_enabled():
     if winreg is None:
         return False
     try:
-        key = winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            r"Software\Microsoft\Windows\CurrentVersion\Run")
-        try:
-            winreg.QueryValueEx(key, RUN_VALUE_NAME)
-            return True
-        except FileNotFoundError:
-            return False
+        with winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
+            try:
+                winreg.QueryValueEx(key, RUN_VALUE_NAME)
+                return True
+            except FileNotFoundError:
+                return False
     except Exception:
         return False
 
@@ -537,16 +556,16 @@ def set_startup(enable):
         return False
     path = r"Software\Microsoft\Windows\CurrentVersion\Run"
     try:
-        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, path, 0,
-                             winreg.KEY_SET_VALUE)
-        if enable:
-            winreg.SetValueEx(key, RUN_VALUE_NAME, 0, winreg.REG_SZ,
-                              _startup_command())
-        else:
-            try:
-                winreg.DeleteValue(key, RUN_VALUE_NAME)
-            except FileNotFoundError:
-                pass
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path, 0,
+                            winreg.KEY_SET_VALUE) as key:
+            if enable:
+                winreg.SetValueEx(key, RUN_VALUE_NAME, 0, winreg.REG_SZ,
+                                  _startup_command())
+            else:
+                try:
+                    winreg.DeleteValue(key, RUN_VALUE_NAME)
+                except FileNotFoundError:
+                    pass
         return True
     except Exception:
         return False
@@ -731,7 +750,10 @@ class Guard:
                         continue
                     self._change_seen.add(sig)
                     self._alert(f"REMOVED {label}: {name}")
-            if key in ("run", "startup"):
+            # Services included: a swapped service ImagePath is a classic
+            # persistence move and must not slip through. Tasks are excluded
+            # because their value is a volatile status (Ready/Running).
+            if key in ("run", "startup", "services"):
                 for name, val in new.items():
                     if name in old and old[name] != val:
                         sig = f"CHG|{key}|{name}|{val}"
@@ -756,24 +778,33 @@ class Guard:
         prefs = collect_defender_prefs()
         old = self.baseline.get("defprefs", {})
         if prefs:
-            ex_paths = prefs.get("ExclusionPath") or []
-            ex_ext = prefs.get("ExclusionExtension") or []
-            ex_proc = prefs.get("ExclusionProcess") or []
-            n_old = sum(len(x or []) for x in (
-                old.get("ExclusionPath"), old.get("ExclusionExtension"),
-                old.get("ExclusionProcess")))
-            n_new = len(ex_paths) + len(ex_ext) + len(ex_proc)
-            if n_new > n_old:
+            def ex_all(p):
+                items = []
+                for k in ("ExclusionPath", "ExclusionExtension",
+                          "ExclusionProcess"):
+                    items.extend(str(x) for x in (p.get(k) or []))
+                return items
+            new_ex = ex_all(prefs)
+            old_ex = ex_all(old)
+            # Compare by content, not count: one exclusion swapped for
+            # another must still alert, and we can say WHAT was added.
+            added = [x for x in new_ex if x not in old_ex]
+            if added:
+                shown = ", ".join(added[:3]) + (
+                    f" (+{len(added) - 3} more)" if len(added) > 3 else "")
                 self._alert(
-                    f"DEFENDER EXCLUSION ADDED (now {n_new}). Malware "
-                    f"often adds these to hide. Review in Windows "
+                    f"DEFENDER EXCLUSION ADDED: {shown}. Malware often "
+                    f"adds these to hide. Review in Windows "
                     f"Security > Virus & threat protection.")
             if prefs.get("DisableRealtimeMonitoring") and not old.get(
                     "DisableRealtimeMonitoring"):
                 self._alert(
                     "DEFENDER REAL-TIME PROTECTION WAS DISABLED!")
-            self.baseline["defprefs"] = prefs
-            self.save_baseline()
+            # Only re-baseline (and hit the disk) when something changed -
+            # this used to rewrite baseline.json every monitor cycle.
+            if prefs != old:
+                self.baseline["defprefs"] = prefs
+                self.save_baseline()
 
     def check_defender(self):
         st = collect_defender_status()
@@ -1938,16 +1969,38 @@ class DefenderPCGuardApp(tk.Tk):
         self._post_def_log("Downloading the offline definition package from Microsoft...")
         self._post_def_log("  (this can take a little while)", "dim")
         url = "https://go.microsoft.com/fwlink/?LinkID=121721&arch=x64"
-        dest = f"{os.environ['TEMP']}\\mpam-fe.exe"
-        urllib.request.urlretrieve(url, dest)
-        self._post_def_log("  Downloaded. Installing...")
-        script = f"$p = Start-Process -FilePath '{dest}' -ArgumentList '/q' -Wait -PassThru; $p.ExitCode"
-        rc, out, err = run_ps_full(script, timeout=360)
-        code = out.strip()
-        if code == "0":
-            self._post_def_log("Offline package installed OK.", "good")
-        else:
-            self._post_def_log(f"Offline installer exit code: {code or 'unknown'} ({err.strip()})", "warn")
+        dest = os.path.join(
+            os.environ.get("TEMP", os.path.expanduser("~")), "mpam-fe.exe")
+        try:
+            # Streamed download with a timeout - urlretrieve() has none and
+            # could hang the update worker forever on a stalled connection.
+            req = urllib.request.Request(
+                url, headers={
+                    "User-Agent":
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            with urllib.request.urlopen(req, timeout=120) as r, \
+                    open(dest, "wb") as f:
+                while True:
+                    chunk = r.read(1 << 16)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+            self._post_def_log("  Downloaded. Installing...")
+            script = (f"$p = Start-Process -FilePath '{dest}' "
+                      f"-ArgumentList '/q' -Wait -PassThru; $p.ExitCode")
+            rc, out, err = run_ps_full(script, timeout=360)
+            code = out.strip()
+            if code == "0":
+                self._post_def_log("Offline package installed OK.", "good")
+            else:
+                self._post_def_log(
+                    f"Offline installer exit code: {code or 'unknown'} "
+                    f"({err.strip()})", "warn")
+        finally:
+            try:
+                os.remove(dest)
+            except Exception:
+                pass
 
     def _run_engine_update(self):
         self._post_def_status("Checking for a newer scanning engine...")
