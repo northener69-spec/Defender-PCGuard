@@ -49,7 +49,16 @@ the things Defender is weakest on, as a **watchdog that alerts you**:
 ## Tabs
 
 - **Defender Update** — update & check Defender (new, leftmost).
-- **Dashboard** — live Defender status and what PC Guard does.
+- **Dashboard** — live Defender status, laid out like the Details log (one
+  panel filling the tab, scrollbar on its right edge). Refreshed every monitor
+  cycle and stamped with a `checked HH:MM:SS` time, so a frozen reading is
+  obvious.
+  - **Defender exclusions** = things Defender is told to *skip* (paths,
+    extensions, processes). The healthy number is **0**; malware adds
+    exclusions so its files are never scanned.
+  - Windows only reveals that list to an **administrator**. Launched
+    normally the app says `unknown (needs admin)` — right-click the app and
+    *Run as administrator* to see the real list and each entry's name.
 - **Network (outbound)** — live connections per process (plus any seen in the
   last 5 minutes). New = red, trusted = green, not-answering = amber, closed = grey.
 - **Startup / persistence** — everything that auto-starts.
@@ -102,6 +111,8 @@ or, if you'd rather type it directly:
 - Data (baseline, trusted list, ignored alerts, daily logs) is stored in
   `%LOCALAPPDATA%\PCGuard`.
 - **Minimise or close** the window to keep it running in the notification area.
+- The **Sound: ON/OFF** toggle is remembered between runs (stored with the
+  other settings in `%LOCALAPPDATA%\PCGuard`).
 
 ## Contact
 

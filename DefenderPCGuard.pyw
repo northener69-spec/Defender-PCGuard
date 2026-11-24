@@ -75,6 +75,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 BASELINE_FILE = os.path.join(DATA_DIR, "baseline.json")
 TRUSTED_FILE = os.path.join(DATA_DIR, "trusted_net.json")
 IGNORED_FILE = os.path.join(DATA_DIR, "ignored_alerts.json")
+SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 
 RUN_VALUE_NAME = "PCGuard"          # HKCU Run key value name
 BASELINE_AGE_DAYS = 30               # nudge to re-baseline after this many days
@@ -95,6 +96,15 @@ def about_text() -> str:
         lines.append(f"Rebuilt by: {APP_REBUILD_BY}.")
     if APP_COPYRIGHT_YEAR:
         lines.append(f"Copyright {APP_COPYRIGHT_YEAR}")
+    lines += [
+        "",
+        "What it watches:",
+        "Persistence - anything that auto-starts.",
+        "Tamper - hosts file, DNS, Defender exclusions and settings.",
+        "Outbound - new process -> remote address pairs.",
+        "",
+        "It alerts; it never blocks. Keep Microsoft Defender switched on.",
+    ]
     return "\n".join(lines)
 
 
@@ -396,11 +406,57 @@ def collect_defender_status():
     return _json(run_ps(ps)) or {}
 
 
-def collect_defender_prefs():
+_PREFS_TTL = 5.0
+_prefs_cache = {"t": 0.0, "v": None}
+
+
+def collect_defender_prefs(max_age=_PREFS_TTL):
+    """Get-MpPreference, cached briefly.
+
+    Both the Defender check and the tamper check want this every cycle, and
+    each call spawns PowerShell - the cache keeps it to one spawn per cycle.
+    """
+    now = time.monotonic()
+    cached = _prefs_cache["v"]
+    if cached is not None and now - _prefs_cache["t"] < max_age:
+        return cached
     ps = ("Get-MpPreference | Select-Object DisableRealtimeMonitoring,"
           "EnableControlledFolderAccess,ExclusionPath,ExclusionExtension,"
           "ExclusionProcess | ConvertTo-Json -Compress")
-    return _json(run_ps(ps)) or {}
+    val = _json(run_ps(ps)) or {}
+    _prefs_cache["v"] = val
+    _prefs_cache["t"] = now
+    return val
+
+
+EXCL_KEYS = ("ExclusionPath", "ExclusionExtension", "ExclusionProcess")
+EXCL_LABELS = {"ExclusionPath": "Path", "ExclusionExtension": "Extension",
+               "ExclusionProcess": "Process"}
+# Windows hands this back *inside* each exclusion array when the caller is
+# not elevated - one placeholder per list, so a naive len() sum is always 3.
+_EXCL_DENIED_MARK = "must be an administrator"
+
+
+def split_exclusions(prefs):
+    """Return (items, denied) for the exclusion lists in a prefs dict.
+
+    items  - [(kind, value), ...] real entries only.
+    denied - True when Windows returned its 'must be an administrator'
+             placeholder instead of the list. Callers must not treat that
+             as real exclusions (counting it produced a permanent "3" on
+             the Dashboard) and must not diff it against a readable list.
+    """
+    items, denied = [], False
+    for key in EXCL_KEYS:
+        for raw in (prefs.get(key) or []):
+            text = str(raw).strip()
+            if not text:
+                continue
+            if _EXCL_DENIED_MARK in text.lower():
+                denied = True
+                continue
+            items.append((EXCL_LABELS[key], text))
+    return items, denied
 
 
 HOSTS_PATH = os.path.join(
@@ -680,6 +736,7 @@ class Guard:
         self._syn_since = {}
         self._syn_alerted = set()
         self._change_seen = set()
+        self._excl_note_done = False
         self.load()
 
     def load(self):
@@ -705,6 +762,7 @@ class Guard:
 
     def take_snapshot(self):
         self.emit("status", "Taking baseline snapshot...")
+        prefs = collect_defender_prefs()
         snap = {
             "run": collect_run_entries(),
             "startup": collect_startup_files(),
@@ -712,7 +770,10 @@ class Guard:
             "tasks": collect_tasks(),
             "hosts_hash": hosts_hash(),
             "dns": collect_dns(),
-            "defprefs": collect_defender_prefs(),
+            "defprefs": prefs,
+            # Kept apart from defprefs: this one stays readable without
+            # admin rights, so it must not be gated on the exclusion list.
+            "def_rtp_off": bool(prefs.get("DisableRealtimeMonitoring")),
             "saved_at": time.time(),
         }
         self.baseline = snap
@@ -778,38 +839,60 @@ class Guard:
         prefs = collect_defender_prefs()
         old = self.baseline.get("defprefs", {})
         if prefs:
-            def ex_all(p):
-                items = []
-                for k in ("ExclusionPath", "ExclusionExtension",
-                          "ExclusionProcess"):
-                    items.extend(str(x) for x in (p.get(k) or []))
-                return items
-            new_ex = ex_all(prefs)
-            old_ex = ex_all(old)
+            new_ex, new_denied = split_exclusions(prefs)
+            old_ex, old_denied = split_exclusions(old)
+            new_ex = [f"{k}: {v}" for k, v in new_ex]
+            old_ex = [f"{k}: {v}" for k, v in old_ex]
             # Compare by content, not count: one exclusion swapped for
             # another must still alert, and we can say WHAT was added.
-            added = [x for x in new_ex if x not in old_ex]
-            if added:
-                shown = ", ".join(added[:3]) + (
-                    f" (+{len(added) - 3} more)" if len(added) > 3 else "")
-                self._alert(
-                    f"DEFENDER EXCLUSION ADDED: {shown}. Malware often "
-                    f"adds these to hide. Review in Windows "
-                    f"Security > Virus & threat protection.")
-            if prefs.get("DisableRealtimeMonitoring") and not old.get(
-                    "DisableRealtimeMonitoring"):
+            # Skipped when either side is the non-admin placeholder - that
+            # would invent changes purely from how the app was launched.
+            if not (new_denied or old_denied):
+                added = [x for x in new_ex if x not in old_ex]
+                if added:
+                    shown = ", ".join(added[:3]) + (
+                        f" (+{len(added) - 3} more)"
+                        if len(added) > 3 else "")
+                    self._alert(
+                        f"DEFENDER EXCLUSION ADDED: {shown}. Malware often "
+                        f"adds these to hide. Review in Windows "
+                        f"Security > Virus & threat protection.")
+            # Real-time protection is tracked on its own: its state is
+            # readable without admin rights, and the exclusion list often
+            # isn't - sharing one 'changed' branch would alert every cycle.
+            rtp_off = bool(prefs.get("DisableRealtimeMonitoring"))
+            was_off = self.baseline.get("def_rtp_off")
+            if was_off is None:
+                # Baselines written before this key existed: fall back to
+                # what they did record, so upgrading can't invent an alert.
+                was_off = bool(old.get("DisableRealtimeMonitoring"))
+            was_off = bool(was_off)
+            if rtp_off and not was_off:
                 self._alert(
                     "DEFENDER REAL-TIME PROTECTION WAS DISABLED!")
+            changed = rtp_off != was_off
             # Only re-baseline (and hit the disk) when something changed -
-            # this used to rewrite baseline.json every monitor cycle.
-            if prefs != old:
+            # this used to rewrite baseline.json every monitor cycle. An
+            # unreadable (non-admin) list never replaces a readable one.
+            if not new_denied and prefs != old:
                 self.baseline["defprefs"] = prefs
+                changed = True
+            if changed:
+                self.baseline["def_rtp_off"] = rtp_off
                 self.save_baseline()
 
     def check_defender(self):
         st = collect_defender_status()
         if st:
+            prefs = collect_defender_prefs()
+            st["_prefs"] = prefs
+            st["_checked"] = time.time()
             self.emit("defender", st)
+            _items, denied = split_exclusions(prefs)
+            if denied and not self._excl_note_done:
+                self._excl_note_done = True
+                self.emit("note", "Exclusion monitoring inactive - needs "
+                                  "administrator (see Dashboard).")
 
     RECENT_TTL = 300.0
 
@@ -985,6 +1068,16 @@ def _write_json(path, obj):
         pass
 
 
+def load_settings():
+    """User preferences that should survive a restart (sound, etc.)."""
+    data = _read_json(SETTINGS_FILE)
+    return data if isinstance(data, dict) else {}
+
+
+def save_settings(data):
+    _write_json(SETTINGS_FILE, data)
+
+
 # ============================================================================
 # Themes (light / dark)
 # ============================================================================
@@ -1085,6 +1178,11 @@ class DefenderPCGuardApp(tk.Tk):
         self._alerts = 0
         self.def_busy = False
 
+        # Preferences must exist before the toolbar is built: the sound button
+        # reads self.sound_on for its label.
+        self._settings = load_settings()
+        self.sound_on = bool(self._settings.get("sound_on", True))
+
         self._build_styles()
         self._build_ui()
 
@@ -1093,7 +1191,7 @@ class DefenderPCGuardApp(tk.Tk):
         except Exception:
             pass
 
-        self.sound_on = True
+        # Restored above, before the toolbar needed it.
         self.tray = None
         self._last_notify = 0.0
         if HAS_TRAY:
@@ -1298,9 +1396,9 @@ class DefenderPCGuardApp(tk.Tk):
             bar, text="Start with Windows", variable=self.startup_var,
             command=self._toggle_startup, style="Bar.TCheckbutton")
         self.startup_chk.pack(side="left", padx=(10, 0))
-        self.sound_btn = ttk.Button(bar, text="Sound: ON",
-                                    style="Neutral.TButton",
-                                    command=self._toggle_sound)
+        self.sound_btn = ttk.Button(
+            bar, text=f"Sound: {'ON' if self.sound_on else 'OFF'}",
+            style="Neutral.TButton", command=self._toggle_sound)
         self.sound_btn.pack(side="right")
         ttk.Button(bar, text="Export log...", style="Neutral.TButton",
                    command=self._export_log).pack(side="right", padx=(0, 8))
@@ -1435,28 +1533,39 @@ class DefenderPCGuardApp(tk.Tk):
         self._configure_def_log_tags()
 
     def _build_dashboard(self, nb):
-        f = ttk.Frame(nb, style="Card.TFrame", padding=16)
+        # padding=12 on all sides, exactly like the Defender Update tab, so
+        # this scrollbar lands on the same pixel as the Details log's.
+        f = ttk.Frame(nb, style="Card.TFrame", padding=12)
         nb.add(f, text="Dashboard")
-        ttk.Label(f, text="Defender status", style="Card.TLabel",
-                  font=self.F_SECTION).grid(row=0, column=0, sticky="w")
-        self.def_txt = tk.Text(f, height=9, width=60, wrap="word",
+        f.columnconfigure(0, weight=1)
+        f.rowconfigure(2, weight=1)
+
+        # Laid out exactly like the Details log on the Defender Update tab:
+        # one panel filling the tab, scrollbar on the panel edge. Anything
+        # stacked under it (or beside it) gets clipped on a 768p screen.
+        head = ttk.Frame(f, style="Card.TFrame")
+        head.grid(row=0, column=0, sticky="ew")
+        ttk.Label(head, text="Defender status", style="Card.TLabel",
+                  font=self.F_MED).pack(side="left")
+        self.def_upd_lbl = ttk.Label(head, text="", style="Card.TLabel")
+        self.def_upd_lbl.pack(side="right")
+        ttk.Label(f, text="It warns about changes; it never blocks.",
+                  style="Card.TLabel", justify="left").grid(
+                      row=1, column=0, sticky="w", pady=(2, 6))
+
+        wrap = ttk.Frame(f, style="Card.TFrame")
+        wrap.grid(row=2, column=0, sticky="nsew")
+        wrap.rowconfigure(0, weight=1)
+        wrap.columnconfigure(0, weight=1)
+        self.def_txt = tk.Text(wrap, height=6, width=40, wrap="word",
                                font=self.F_LABEL, bg=self.theme["field_bg"],
                                fg=self.theme["field_fg"], relief="flat",
-                               padx=6, pady=6, highlightthickness=1)
-        self.def_txt.grid(row=1, column=0, sticky="nsew", pady=(6, 10))
-        ttk.Label(f, text="How PC Guard helps", style="Card.TLabel",
-                  font=self.F_SECTION).grid(row=2, column=0, sticky="w")
-        ttk.Label(
-            f,
-            text=("• Persistence: flags anything new that auto-starts.\n"
-                  "• Tamper: flags hosts-file / DNS changes and new Defender "
-                  "exclusions or disabled real-time protection.\n"
-                  "• Outbound: flags new process -> remote pairs. 'Trust "
-                  "selected' silences ones you recognise.\n"
-                  "This is a watchdog (alerts), not a blocker. Keep Defender on."),
-            style="Card.TLabel", justify="left").grid(row=3, column=0,
-                                                      sticky="w")
-        f.columnconfigure(0, weight=1)
+                               bd=0, padx=10, pady=10, highlightthickness=1)
+        self.def_txt.grid(row=0, column=0, sticky="nsew")
+        self.def_sb = ttk.Scrollbar(wrap, orient="vertical",
+                                    command=self.def_txt.yview)
+        self.def_txt.configure(yscrollcommand=self.def_sb.set)
+        self.def_sb.grid(row=0, column=1, sticky="ns")
 
     def _build_network(self, nb):
         f = ttk.Frame(nb, style="Card.TFrame", padding=10)
@@ -1553,6 +1662,8 @@ class DefenderPCGuardApp(tk.Tk):
         def work():
             st = collect_defender_status()
             if st:
+                st["_prefs"] = collect_defender_prefs()
+                st["_checked"] = time.time()
                 self.q.put(("defender", st))
             snap = self.guard.display_snapshot()
             self.q.put(("startup", snap))
@@ -1711,7 +1822,10 @@ class DefenderPCGuardApp(tk.Tk):
     def _toggle_sound(self):
         self.sound_on = not self.sound_on
         self.sound_btn.config(text=f"Sound: {'ON' if self.sound_on else 'OFF'}")
-        self._log(f"Alert sound {'enabled' if self.sound_on else 'muted'}.")
+        self._settings["sound_on"] = self.sound_on
+        save_settings(self._settings)
+        self._log(f"Alert sound {'enabled' if self.sound_on else 'muted'}"
+                  f" (remembered next time).")
 
     def _clear_alerts(self):
         self._alerts = 0
@@ -2261,13 +2375,35 @@ class DefenderPCGuardApp(tk.Tk):
         for label, val in rows:
             shown = yn(val) if isinstance(val, bool) else (val or "-")
             t.insert("end", f"{label:<24}{shown}\n")
-        prefs = collect_defender_prefs()
-        ex = sum(len(prefs.get(k) or []) for k in (
-            "ExclusionPath", "ExclusionExtension", "ExclusionProcess"))
-        t.insert("end", f"{'Defender exclusions':<24}{ex}\n")
-        if ex:
-            t.insert("end", "  (exclusions let malware hide - review them)\n")
+
+        # Prefs arrive with the status payload: collecting them here would run
+        # PowerShell on the UI thread on every refresh cycle.
+        prefs = st.get("_prefs") or {}
+        items, denied = split_exclusions(prefs)
+        head = f"{'Defender exclusions':<24}"
+        if not prefs:
+            t.insert("end", head + "unknown (unreadable)\n")
+        elif denied:
+            t.insert("end", head + "unknown (needs admin)\n")
+            t.insert("end", "  Run as administrator to see the list - "
+                             "Windows hides it from non-admin programs.\n")
+        elif not items:
+            t.insert("end", head + "0 (none - the healthy default)\n")
+        else:
+            t.insert("end", head + f"{len(items)} - review these\n")
+            shown = "; ".join(f"{kind}: {val}" for kind, val in items[:8])
+            if len(items) > 8:
+                shown += f"; (+{len(items) - 8} more)"
+            t.insert("end", "  " + shown + "\n")
+            t.insert("end", "  Not scanned by Defender. Malware adds these "
+                             "to hide - delete any you don't recognise in "
+                             "Windows Security > Exclusions.\n")
         t.config(state="disabled")
+
+        when = st.get("_checked")
+        self.def_upd_lbl.config(
+            text=(f"checked {time.strftime('%H:%M:%S', time.localtime(when))}"
+                  if when else ""))
 
     def _render_network(self, conns):
         self.net_tree.delete(*self.net_tree.get_children())
