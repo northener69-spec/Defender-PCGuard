@@ -58,7 +58,7 @@
           fill="none" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>
   <div>
-    <h1>Defender PC Guard <span class="badge">v2.0.0</span></h1>
+    <h1>Defender PC Guard <span class="badge">v2.0.1</span></h1>
     <p>Windows Defender updater + companion watchdog — with light &amp; dark themes.</p>
   </div>
 </header>
@@ -103,7 +103,8 @@ beyond what you ask it to.</p>
   <li><strong>Tamper — changes to your defences.</strong> Monitors the <strong>hosts file</strong>
       (hash), your <strong>DNS servers</strong>, and <strong>Defender's own settings</strong> —
       alerting if an <strong>exclusion is added</strong> or <strong>real-time protection</strong>
-      is turned off.</li>
+      is turned off. New exclusions can only be detected when the app runs
+      <strong>as administrator</strong> — Windows hides the list from normal programs.</li>
   <li><strong>Outbound — who's phoning home.</strong> Lists connections per process and flags any
       <strong>new process → remote-address</strong> pair, plus <em>not-answering</em> and
       <em>burst</em> behaviour.</li>
@@ -118,7 +119,9 @@ beyond what you ask it to.</p>
   <tr><td><strong>Defender Update</strong></td><td>Update and check Microsoft Defender (definitions
       + optional engine), with its own live log.</td></tr>
   <tr><td><strong>Dashboard</strong></td><td>Live Defender status — real-time protection, signatures,
-      cloud, and how many exclusions exist.</td></tr>
+      cloud, and the exclusions list, refreshed every cycle and stamped with the time it was
+      <code>checked</code>. Exclusions show as <em>unknown (needs admin)</em> unless the app is run
+      as administrator. Laid out like the Details log: one panel, scrollbar on its right edge.</td></tr>
   <tr><td><strong>Network (outbound)</strong></td><td>Live connections <em>plus</em> any seen in the
       last 5 minutes. <em>Open</em>, <em>Connecting</em>, <em>Blocked?</em> or <em>Closed</em>.</td></tr>
   <tr><td><strong>Startup / persistence</strong></td><td>Everything that auto-starts (Run keys,
@@ -150,7 +153,7 @@ beyond what you ask it to.</p>
   <li><strong>Minimise or close</strong> the window and it keeps running in the
       <strong>notification area</strong>. Right-click the tray icon for options.</li>
   <li><strong>Two distinct alert tones</strong> for outbound vs tamper/persistence, toggleable with
-      <strong>Sound: ON/OFF</strong>.</li>
+      <strong>Sound: ON/OFF</strong>. The choice is <strong>remembered</strong> between runs.</li>
   <li><strong>Start with Windows</strong>, <strong>outbound burst detection</strong>,
       <strong>not-answering detection</strong>, <strong>ignore an alert</strong>,
       <strong>export log (TXT/CSV)</strong>, and a <strong>baseline age reminder</strong>.</li>
@@ -162,7 +165,8 @@ beyond what you ask it to.</p>
 <ul>
   <li><strong>From source:</strong> <code>python DefenderPCGuard.pyw</code>
       (or <code>Run Defender PC Guard.bat</code>).</li>
-  <li><strong>Build an exe:</strong> <code>pip install pyinstaller</code> then
+  <li><strong>Build an exe:</strong> run <code>build_exe.bat</code> (checks Python + PyInstaller,
+      builds, and copies the exe into the folder), or <code>pip install pyinstaller</code> then
       <code>pyinstaller DefenderPCGuard.spec</code> → <code>dist\DefenderPCGuard.exe</code>.</li>
 </ul>
 <div class="section">
@@ -197,7 +201,7 @@ beyond what you ask it to.</p>
 </div>
 
 <footer>
-  Defender PC Guard &mdash; version 2.0.0 &nbsp;|&nbsp; Created by northener69/aJonYmous3383 &nbsp;|&nbsp;
+  Defender PC Guard &mdash; version 2.0.1 &nbsp;|&nbsp; Created by northener69/aJonYmous3383 &nbsp;|&nbsp;
   Coded by DeepSeek V4.1 Flash &nbsp;|&nbsp; Copyright 2026
 </footer>
 
