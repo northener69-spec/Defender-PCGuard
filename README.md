@@ -101,7 +101,9 @@ or, if you'd rather type it directly:
 ## Run it
 
 - **From source:** `Run Defender PC Guard.bat`, or `python DefenderPCGuard.pyw`
-- **Build an exe:** `pip install pyinstaller` then `pyinstaller DefenderPCGuard.spec`
+- **Build an exe:** double-click **`build_exe.bat`** (checks Python + PyInstaller,
+  builds, and copies `DefenderPCGuard.exe` into this folder).
+  Or run it by hand: `pip install pyinstaller` then `pyinstaller DefenderPCGuard.spec`
   → `dist\DefenderPCGuard.exe`
 
 ## Notes
